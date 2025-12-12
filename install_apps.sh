@@ -112,15 +112,14 @@ install_arch_based() {
 
     # Thêm fcitx5-im (trọn bộ) và fcitx5-bamboo (gõ tiếng Việt tốt nhất)
     PKGS_OFFICIAL=(
-        "git" "base-devel" "docker" "docker-compose" "mariadb"
-        "dbeaver" "telegram-desktop" "fastfetch"
+        "git" "base-devel" "docker" "docker-compose"
+        "mysql-workbench" "telegram-desktop" "fastfetch"
         "fcitx5-im" "fcitx5-bamboo"
     )
     
     PKGS_AUR=(
         "visual-studio-code-bin" "miniconda3" "rustdesk-bin"
-        "proton-vpn-gtk-app" "termius-app" "brave-bin"
-        "wps-office" "ttf-wps-fonts"
+        "proton-vpn-gtk-app" "brave-bin" "antigravity"
     )
 
     execute "${INSTALL_CMD[@]}" "${PKGS_OFFICIAL[@]}"
@@ -134,7 +133,19 @@ install_debian_based() {
     # Thêm fcitx5 và fcitx5-unikey (Bamboo khó cài tự động trên Debian/Ubuntu hơn)
     execute "${INSTALL_CMD[@]}" git curl build-essential software-properties-common \
         apt-transport-https ca-certificates gnupg lsb-release \
-        fcitx5 fcitx5-unikey
+        fcitx5 fcitx5-unikey mysql-workbench
+
+    # Antigravity Setup
+    echo -e "${YELLOW}[+] Adding Antigravity repo...${NC}"
+    execute sudo mkdir -p /etc/apt/keyrings
+    if [ "$DRY_RUN" = true ]; then
+        echo -e "${BLUE}[DRY-RUN] Would add Antigravity GPG key and repo${NC}"
+    else
+        curl -fsSL https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg | execute sudo gpg --dearmor --yes -o /etc/apt/keyrings/antigravity-repo-key.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/antigravity-repo-key.gpg] https://us-central1-apt.pkg.dev/projects/antigravity-auto-updater-dev/ antigravity-debian main" | execute sudo tee /etc/apt/sources.list.d/antigravity.list > /dev/null
+        execute sudo apt update
+    fi
+    execute "${INSTALL_CMD[@]}" antigravity
 
     if ! command -v docker &> /dev/null; then
         echo -e "${YELLOW}[+] Installing Docker...${NC}"
@@ -145,8 +156,6 @@ install_debian_based() {
         fi
     fi
 
-    execute "${INSTALL_CMD[@]}" mariadb-server mariadb-client
-
     if ! command -v flatpak &> /dev/null; then
         execute "${INSTALL_CMD[@]}" flatpak gnome-software-plugin-flatpak
     fi
@@ -155,8 +164,8 @@ install_debian_based() {
     echo -e "${YELLOW}[+] Installing GUI Apps via Flatpak...${NC}"
     execute flatpak install -y flathub \
         com.visualstudio.code org.telegram.desktop com.brave.Browser \
-        com.wps.Office com.rustdesk.RustDesk \
-        io.dbeaver.DBeaverCommunity com.termius.Termius
+        com.rustdesk.RustDesk \
+        com.termius.Termius
 }
 
 install_fedora_based() {
@@ -165,11 +174,24 @@ install_fedora_based() {
     execute "${INSTALL_CMD[@]}" dnf-plugins-core
     execute sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
     
+    # Antigravity Setup
+    echo -e "${YELLOW}[+] Adding Antigravity repo...${NC}"
+    if [ "$DRY_RUN" = true ]; then
+        echo -e "${BLUE}[DRY-RUN] Would add Antigravity repo to /etc/yum.repos.d/${NC}"
+    else
+        sudo tee /etc/yum.repos.d/antigravity.repo << EOL
+[antigravity-rpm]
+name=Antigravity RPM Repository
+baseurl=https://us-central1-yum.pkg.dev/projects/antigravity-auto-updater-dev/antigravity-rpm
+enabled=1
+gpgcheck=0
+EOL
+    fi
+    execute "${INSTALL_CMD[@]}" antigravity
+
     # Thêm fcitx5 fcitx5-unikey
     execute "${INSTALL_CMD[@]}" docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
-        fcitx5 fcitx5-unikey fcitx5-autostart
-
-    execute "${INSTALL_CMD[@]}" mariadb mariadb-server
+        fcitx5 fcitx5-unikey fcitx5-autostart mysql-workbench
 
     if ! command -v flatpak &> /dev/null; then
         execute "${INSTALL_CMD[@]}" flatpak
@@ -179,8 +201,8 @@ install_fedora_based() {
     echo -e "${YELLOW}[+] Installing GUI Apps via Flatpak...${NC}"
     execute flatpak install -y flathub \
         com.visualstudio.code org.telegram.desktop com.brave.Browser \
-        com.wps.Office com.rustdesk.RustDesk \
-        io.dbeaver.DBeaverCommunity com.termius.Termius
+        com.rustdesk.RustDesk \
+        com.termius.Termius
 }
 
 # ==============================================================================
@@ -209,33 +231,6 @@ post_install_config() {
         fi
     fi
 
-    echo -e "${YELLOW}[+] Cấu hình MariaDB...${NC}"
-    if [ ! -d "/var/lib/mysql/mysql" ] && command -v mariadb-install-db &> /dev/null; then
-        echo -e "${YELLOW}    -> Khởi tạo database ban đầu...${NC}"
-        execute sudo mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql
-    fi
-    
-    execute sudo systemctl enable --now mariadb
-    
-    if [ "$DRY_RUN" = false ]; then
-        echo -e "${YELLOW}    -> Đang chờ MariaDB khởi động...${NC}"
-        sleep 5
-        echo -e "\n${GREEN}[?] Bạn có muốn thiết lập mật khẩu ROOT cho MariaDB ngay không? (y/n)${NC}"
-        if read -r -t 10 SETUP_DB_PASS && [[ "$SETUP_DB_PASS" =~ ^[Yy]$ ]]; then
-            echo -e "${YELLOW}Nhập mật khẩu mới cho user 'root':${NC}"
-            read -rsp "Password: " DB_ROOT_PASS
-            echo ""
-            if sudo mariadb -e "FLUSH PRIVILEGES;" &>/dev/null; then
-                sudo mariadb -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${DB_ROOT_PASS}'; FLUSH PRIVILEGES;"
-                echo -e "${GREEN}[OK] Đã thiết lập mật khẩu root!${NC}"
-            else
-                echo -e "${RED}[WARN] Không kết nối được DB.${NC}"
-            fi
-        fi
-    else
-        echo -e "${BLUE}[DRY-RUN] Would ask for MariaDB password setup here.${NC}"
-    fi
-
     # Miniconda Config
     if [ -f "/opt/miniconda3/bin/conda" ] || [ "$DRY_RUN" = true ]; then
         echo -e "\n${YELLOW}[+] Cấu hình Miniconda3...${NC}"
@@ -251,7 +246,7 @@ post_install_config() {
             set -u
         fi
     fi
-}
+} ["Antigravity"]="antigravity"
 
 # ==============================================================================
 # 4. HÀM TỰ KIỂM TRA (VERIFICATION)
@@ -264,10 +259,11 @@ verify_installation() {
 
     echo -e "\n${BLUE}┌── VERIFYING INSTALLATION ──┐${NC}"
     declare -A CHECK_LIST=(
-        ["Docker"]="docker" ["Git"]="git" ["MariaDB"]="mariadb"
-        ["VS Code"]="code" ["DBeaver"]="dbeaver" ["Telegram"]="telegram-desktop"
+        ["Docker"]="docker" ["Git"]="git"
+        ["VS Code"]="code" ["MySQL Workbench"]="mysql-workbench"
+        ["Telegram"]="telegram-desktop"
         ["Fastfetch"]="fastfetch" ["Brave Browser"]="brave"
-        ["WPS Office"]="wps" ["Termius"]="termius-app"
+        ["Termius"]="termius-app"
         ["RustDesk"]="rustdesk" ["Miniconda"]="conda"
         ["Fcitx5"]="fcitx5"
     )
