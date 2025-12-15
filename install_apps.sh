@@ -310,8 +310,43 @@ EOL
 
     # [REMOVED] MySQL Workbench - Skipped per user request due to repo conflicts on Fedora 43
 
-    # [REMOVED] Termius - Skipped per user request
-    # [REMOVED] Telegram - Skipped per user request
+    # 7.2 Cài đặt Telegram và Termius qua Flatpak
+    echo -e "${YELLOW}[+] Installing Apps via Flatpak (Telegram, Termius)...${NC}"
+    if ! command -v flatpak &> /dev/null; then
+        execute "${INSTALL_CMD[@]}" flatpak
+    fi
+    execute sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+    
+    execute flatpak install -y flathub org.telegram.desktop com.termius.Termius
+
+    # 7.3 Cài đặt MySQL Workbench qua Snap (Fix lỗi trên Fedora)
+    echo -e "${YELLOW}[+] Installing MySQL Workbench via Snap...${NC}"
+    if ! command -v snap &> /dev/null; then
+        echo -e "${YELLOW}    -> Installing Snapd...${NC}"
+        execute "${INSTALL_CMD[@]}" snapd
+        # Tạo symlink cho classic snap support (Bắt buộc trên Fedora)
+        if [ ! -L /snap ]; then
+             execute sudo ln -s /var/lib/snapd/snap /snap
+        fi
+        # Chờ snapd khởi động (quan trọng)
+        if [ "$DRY_RUN" = false ]; then
+             echo -e "${YELLOW}    -> Waiting for snapd to initialize...${NC}"
+             execute sudo systemctl enable --now snapd.socket
+             sleep 5 
+        fi
+    fi
+    
+    # Cài đặt MySQL Workbench
+    if [ "$DRY_RUN" = true ]; then
+        echo -e "${BLUE}[DRY-RUN] Would install mysql-workbench-community via snap${NC}"
+    else
+        # Kiểm tra xem đã cài chưa để tránh lỗi
+        if ! snap list | grep -q "mysql-workbench-community"; then
+             execute sudo snap install mysql-workbench-community
+        else
+             echo -e "${GREEN}    -> MySQL Workbench (Snap) đã được cài đặt.${NC}"
+        fi
+    fi
 
     # 7.4 RustDesk (Github Release)
     if ! command -v rustdesk &> /dev/null; then
