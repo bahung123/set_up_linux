@@ -143,6 +143,7 @@ install_arch_based() {
         "git" "base-devel" "docker" "docker-compose"
         "telegram-desktop" "fastfetch"
         "fcitx5-im" "fcitx5-bamboo"
+        "texlive-meta"
     )
     
     PKGS_AUR=(
@@ -161,7 +162,8 @@ install_debian_based() {
     # Thêm fcitx5 và fcitx5-unikey (Bamboo khó cài tự động trên Debian/Ubuntu hơn)
     execute "${INSTALL_CMD[@]}" git curl wget build-essential software-properties-common \
         apt-transport-https ca-certificates gnupg lsb-release \
-        fcitx5 fcitx5-unikey 
+        fcitx5 fcitx5-unikey \
+        texlive-full
 
     # VS Code Native
     echo -e "${YELLOW}[+] Installing VS Code (Native)...${NC}"
@@ -288,7 +290,10 @@ EOL
     # 5. Cài đặt App (DNF sẽ tự bỏ qua gói đã cài -> An toàn)
     execute "${INSTALL_CMD[@]}" antigravity
     execute "${INSTALL_CMD[@]}" code brave-browser docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
-        fcitx5 fcitx5-unikey fcitx5-autostart fcitx5-qt kcm-fcitx5
+        fcitx5 fcitx5-unikey fcitx5-autostart fcitx5-qt kcm-fcitx5 \
+
+    # 5.1 LaTeX (Full scheme) - cài riêng theo yêu cầu
+    execute sudo dnf install -y texlive-scheme-full
 
     # 6. Cài Miniconda (QUAN TRỌNG: Kiểm tra thư mục trước)
     # Đã có hàm install_miniconda_manual xử lý logic này rồi, gọi lại hàm đó cho gọn
@@ -495,6 +500,7 @@ verify_installation() {
         ["Brave Browser"]="brave-browser"
         ["RustDesk"]="rustdesk" ["Miniconda"]="conda"
         ["Fcitx5"]="fcitx5"
+        ["LaTeX (pdflatex)"]="pdflatex"
     )
     local errors=0
     for name in "${!CHECK_LIST[@]}"; do
@@ -551,3 +557,5 @@ fi
 
 echo -e "${YELLOW}[NOTE] Docker đã sẵn sàng! Nếu vẫn gặp lỗi Permission, hãy Logout và Login lại.${NC}"
 echo -e "${YELLOW}[NOTE] Vui lòng khởi động lại máy để các thay đổi (như Fcitx5) có hiệu lực.${NC}"
+
+# custom scrennshot spectacle -r -b 
